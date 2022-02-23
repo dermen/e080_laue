@@ -1,7 +1,7 @@
 # e080 Laue
-Scripts and instructions for processing the e080 dataset using diffBragg
+Scripts and instructions for processing the e080 dataset using diffBragg. If a the location of a filename in the instructions is not specified, assume it exists in this repository!
 
-# Instructions for setting up diffBragg on the [harvard cluster](https://www.rc.fas.harvard.edu/).
+## Instructions for setting up diffBragg on the [harvard cluster](https://www.rc.fas.harvard.edu/).
 
 Environment:
 
@@ -102,13 +102,6 @@ Use dials to get the strong reflections. Use the unpacked mask.
 
 ```bash
 dials.find_spots optimized_newpath.expt  sigma_strong=1 sigma_background=1 mask=~/e080_laue/newbad.pkl  gain=0.4 kernel_size=[2,2] output.reflections=strongs.refl min_spot_size=3 filter.d_min=1.493 max_spot_size=90
-```
-
-Split expts and refls into single files:
-
-```bash
-mkdir split ; cd split
-dials.split_experiments ../optimized_newpath.expt ../strongs.refls
 ```
 
 Get an initial spectrum suitable for diffBragg (the following script writes 4 spectra files at 1,2,3 and 4 eV resolutions)
