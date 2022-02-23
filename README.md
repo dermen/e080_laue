@@ -81,3 +81,72 @@ wget  https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
 ln -s $PWD/eigen-3.4.0 eigen
 ```
 
+## Pre-Processing
+
+Get the tarball from Rick
+
+Replace the paths in the expts which point to Ricks private folder:
+
+```bash
+libtbx.python replace_path_expts.py  optimized.expt  optimized_newpath.expt
+```
+
+Unpack the mask (NOTE: this mask will be used throughout analysis!)
+
+```
+cd /wherevers/e080_laue
+libtbx.python unpack_mask.py
+```
+
+Use dials to get the strong reflections. Use the unpacked mask.
+
+```bash
+dials.find_spots optimized_newpath.expt  sigma_strong=1 sigma_background=1 mask=~/e080_laue/newbad.pkl  gain=0.4 kernel_size=[2,2] output.reflections=strongs.refl min_spot_size=3 filter.d_min=1.493 max_spot_size=90
+```
+
+Split expts and refls into single files:
+
+```bash
+mkdir split ; cd split
+dials.split_experiments ../optimized_newpath.expt ../strongs.refls
+```
+
+Get an initial spectrum suitable for diffBragg (the following script writes 4 spectra files at 1,2,3 and 4 eV resolutions)
+
+```bash
+libtbx.python fit_spec.py
+```
+
+There is a convenience script to check the eV per pixel at various resolutions to gauge the necessary energy resolution for the diffBragg input spectrum
+
+```
+libtbx.python estimate_ev_per_pix.py 
+	eV spread per pixel is 18.7475 eV at 4.0 Angstrom resolution
+
+	eV spread per pixel is 13.2167 eV at 3.0 Angstrom resolution
+
+	eV spread per pixel is 10.3319 eV at 2.5 Angstrom resolution
+
+	eV spread per pixel is 7.3135 eV at 2.0 Angstrom resolution
+
+	eV spread per pixel is 4.1113 eV at 1.5 Angstrom resolution
+
+	eV spread per pixel is 2.4612 eV at 1.2 Angstrom resolution
+
+```
+
+Based on these numbers, it seems 3eV is suitable (1.2 Angstrom is the corner res)
+
+Make the input file for diffBragg
+
+```bash
+libtbx.python make_input_f.py  optimized_newpath.expt  strongs.refl  spec_3eV.lam 
+```
+
+Download the PDB file needed to structure factor generation
+
+```
+iotbx.fetch_pdb 7lvc
+```
+
+
