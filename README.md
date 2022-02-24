@@ -142,4 +142,47 @@ Download the PDB file needed to structure factor generation
 iotbx.fetch_pdb 7lvc
 ```
 
+# Processing
+
+Grab a node for production work, we will allocate a session where every 2 ranks share 1 GPU
+
+```bash
+salloc --x11 -p seas_gpu_requeue -t 240 -n8 --mem 32G --constraint=v100 --gres=gpu:4
+
+source ~/setup_db.sh
+```
+
+where `set_db.sh` contains the environment settings (note the path to `setpaths.sh` will depend on how you defined `CCTBXLAND` above, here `CCTBXLAND` is `~/xtal` ) , e.g.
+
+```bash
+# contents of setup_db.sh
+module load cuda/11.1.0-fasrc01 gcc/8.3.0-fasrc01 openmpi
+export SETUPTOOLS_USE_DISTUTILS=1
+source ~/xtal/build/setpaths.sh 
+```
+
+Work on the branch until its merged into master
+
+```bash
+# this shouldnt be necessary for long as the pull request is under review as of Feb 23, 2022, but for now, this processing is only supported under the diffBragg_laue branch of cctbx_project:
+cd $CCTBXLAND/modules/cctbx_project
+git fetch
+git checkout diffBragg_laue
+git pull
+cd $CCTBXLAND/build
+make
+```
+
+Edit the script `hopper.phil` to contain the proper paths to any files and execute the command. Before doing multi process run, try a single image
+
+```bash
+export INPUT_F=/path/to/exp_ref_spec.txt
+export OUTPUT_D=/somewheres/to/dump/outputs
+DIFFBRAGG_USE_CUDA=1 srun --mpi=pmi2 simtbx.diffBragg.hopper hopper.phil  exp_ref_spec_file=$INPUT_F outdir=$OUTPUT_D num_devices=4 first_n=8
+
+# examine the results
+libtbx.python comp_all_d.py "$OUTPUT_D/refls/rank*/*.refl"
+```
+
+
 
