@@ -1,5 +1,11 @@
 # e080 Laue
-Scripts and instructions for processing the e080 dataset using diffBragg. If a the location of a filename in the instructions is not specified, assume it exists in this repository!
+Scripts and instructions for processing the e080 dataset using diffBragg. If a the location of a filename in the instructions is not specified, assume it exists in this repository! Also, the input files required for this processing (optimized.expt and optimized.refl) were provided by Rick. They are on FAS cluster:
+
+```
+-rw-r--r-- 1 dermen hekstra_lab   181965 Feb 11 12:22 /n/holyscratch01/hekstra_lab/dermen/from_rick/optimized.expt
+-rw-r--r-- 1 dermen hekstra_lab 28666953 Feb 11 12:22 /n/holyscratch01/hekstra_lab/dermen/from_rick/optimized.refl
+```
+
 
 ## Instructions for setting up diffBragg on the [harvard cluster](https://www.rc.fas.harvard.edu/).
 
