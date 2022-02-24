@@ -182,7 +182,11 @@ DIFFBRAGG_USE_CUDA=1 srun --mpi=pmi2 simtbx.diffBragg.hopper hopper.phil  exp_re
 
 # examine the results
 libtbx.python pred_offsets.py "$OUTPUT_D/refls/rank*/*.refl"
+# produces the plot:
 ```
 
+<p align="center">
+![results_first_harv](https://user-images.githubusercontent.com/2335439/155447902-d87a02f3-b471-4e06-92ea-11aff82672f8.png)
+</p>
 
 
