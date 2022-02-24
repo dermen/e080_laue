@@ -181,7 +181,7 @@ export OUTPUT_D=/somewheres/to/dump/outputs
 DIFFBRAGG_USE_CUDA=1 srun --mpi=pmi2 simtbx.diffBragg.hopper hopper.phil  exp_ref_spec_file=$INPUT_F outdir=$OUTPUT_D num_devices=4 first_n=8
 
 # examine the results
-libtbx.python comp_all_d.py "$OUTPUT_D/refls/rank*/*.refl"
+libtbx.python pred_offsets.py "$OUTPUT_D/refls/rank*/*.refl"
 ```
 
 

@@ -20,7 +20,7 @@ refiner {
   sigma_r=10
   randomize_devices=False
   num_devices=8
-  reference_geom=opt_rayonix_thick2.expt
+  reference_geom=opt_rayonix.expt
 }
 simulator {
   total_flux=1e12

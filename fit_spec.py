@@ -32,17 +32,19 @@ bins = np.linspace(wave.min() - 1e-6, wave.max() + 1e-6, nbin+1)
 wt = np.histogram(wave, bins)[0]
 wavelen = (bins[:-1] + bins[1:]) * 0.5
 wt = smooth(wt, window_size=201)
+ave_wave = (wavelen*wt).sum() / wt.sum()
+ave_en = utils.ENERGY_CONV/ave_wave
+print("mean energy=%f Angstrom (%f eV)" % (ave_wave, ave_en))
 
 for stride in [1,2,3,4]:
     name ="spec_%deV.lam" % stride
-    x = utils.ENERGY_CONV/wavelen[::stride]
+    x = wavelen[::stride]
     y = wt[::stride]
     utils.save_spectra_file(name, x,y)
     print("Wrote %s (%d channels)" % (name, len(x)))
 from pylab import *
 figure()
-plot( x,y)
-legend()
+plot( utils.ENERGY_CONV/x,y)
 xlabel("eV")
 ylabel("intensity (a.u.)")
 show()
