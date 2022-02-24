@@ -110,6 +110,11 @@ Get an initial spectrum suitable for diffBragg (the following script writes 4 sp
 libtbx.python fit_spec.py
 ```
 
+
+<p align="center">
+<img src=https://user-images.githubusercontent.com/2335439/155448196-86426657-b2a4-48bc-b37f-60c2f83212ba.png />
+</p>
+
 There is a convenience script to check the eV per pixel at various resolutions to gauge the necessary energy resolution for the diffBragg input spectrum
 
 ```
@@ -186,7 +191,8 @@ libtbx.python pred_offsets.py "$OUTPUT_D/refls/rank*/*.refl"
 ```
 
 <p align="center">
-![results_first_harv](https://user-images.githubusercontent.com/2335439/155447902-d87a02f3-b471-4e06-92ea-11aff82672f8.png)
+<img src=https://user-images.githubusercontent.com/2335439/155447902-d87a02f3-b471-4e06-92ea-11aff82672f8.png />
 </p>
+
 
 
