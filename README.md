@@ -113,7 +113,7 @@ dials.find_spots optimized_newpath.expt  sigma_strong=1 sigma_background=1 mask=
 Get an initial spectrum suitable for diffBragg (the following script writes 4 spectra files at 1,2,3 and 4 eV resolutions)
 
 ```bash
-libtbx.python fit_spec.py
+libtbx.python fit_spec.py optimized.refl
 ```
 
 
