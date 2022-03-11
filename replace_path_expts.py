@@ -1,21 +1,27 @@
 import sys
 import os
 import re
+from argparse import ArgumentParser
 
-o = open(sys.argv[1], 'r').readlines()
-newdir = "/n/hekstra_lab/data/201903_APS_BioCARS/e080/"
+parser = ArgumentParser()
+parser.add_argument("orig", type=str, help="expt file from ricks tarball")
+parser.add_argument("new", type=str, help="new expt file to write with updated paths")
+parser.add_argument("newdir", type=str, help="root folder for the e080 mccds on current system")
+args = parser.parse_args()
+
+o = open(args.orig, 'r').readlines()
 
 new_l = []
 for l in o:
     if "mccd" in l:
         s = re.search('".*mccd"', l)
         path = l[s.start() + 1 : s.end() - 1]
-        new_path = os.path.join(newdir, os.path.basename(path))
+        new_path = os.path.join(args.newdir, os.path.basename(path))
         assert os.path.exists(new_path)
         l = l[: s.start() + 1] + new_path + '"\n'
     new_l.append(l)
 
-o = open(sys.argv[2], "w")
+o = open(args.new, "w")
 o.writelines(new_l)
 o.close()
 print("Wrote %s" % sys.argv[2])

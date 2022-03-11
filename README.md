@@ -94,7 +94,7 @@ Get the tarball from Rick
 Replace the paths in the expts which point to Ricks private folder:
 
 ```bash
-libtbx.python replace_path_expts.py  optimized.expt  optimized_newpath.expt
+libtbx.python replace_path_expts.py  optimized.expt  optimized_newpath.expt /n/hekstra_lab/data/201903_APS_BioCARS/e080/
 ```
 
 Unpack the mask (NOTE: this mask will be used throughout analysis!)
