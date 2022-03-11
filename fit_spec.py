@@ -2,6 +2,8 @@ import numpy as np
 from simtbx.diffBragg import utils
 from dials.array_family import flex
 from scipy.interpolate import interp1d
+import sys
+
 
 def smooth(x, beta=10.0, window_size=11):
     """
@@ -22,7 +24,7 @@ res = 1/utils.ENERGY_CONV   # 1 eV
 
 
 ###
-R = flex.reflection_table.from_file("optimized.refl")
+R = flex.reflection_table.from_file(sys.argv[1])
 wave = R["Wavelength"].as_numpy_array()
 wave_range = wave.max()-wave.min()
 
