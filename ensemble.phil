@@ -1,0 +1,80 @@
+
+method="L-BFGS-B"
+use_restraints=False
+space_group=P212121
+lbfgs_maxiter=500
+
+spectrum_from_imageset = False
+roi {
+  shoebox_size=12
+  fit_tilt=True
+  fit_tilt_using_weights = False
+  reject_edge_reflections = False
+  reject_roi_with_hotpix = False
+  pad_shoebox_for_background_estimation=10
+  hotpixel_mask = /n/home00/dermen/e080_laue/newbad.pkl
+  mask_outside_trusted_range = True
+}
+refiner {
+  mask = /n/home00/dermen/e080_laue/newbad.pkl
+  adu_per_photon = 0.7
+  sigma_r=3
+  panel_group_file=/n/home00/dermen/e080_laue/mono_pg.txt 
+  num_devices=8
+  randomize_devices=False
+}
+simulator {
+  oversample=1
+  crystal.has_isotropic_ncells = False
+  structure_factors.from_pdb.name = /n/home00/dermen/e080_laue/7lvc.pdb
+  beam.size_mm = 0.001
+  detector {
+    force_zero_thickness = False
+    atten = 0.017
+    thicksteps = 5
+    thick = 0.032
+  }
+}
+mins {
+  Nabc=[3,3,3]
+  detz_shift=-1.5
+  RotXYZ=[-15,-15,-15]
+  G=0
+}
+maxs {
+  RotXYZ=[15,15,15]
+  Nabc=[1600,1600,1600]
+  G=1e16
+  detz_shift=1.5
+}
+betas {
+  RotXYZ=1e-5
+  G = 1e12
+  ucell = 1e12, 1e12
+  Nabc = 1e12,1e12,1e12
+}
+sigmas {
+  RotXYZ=[1e-2,1e-2,1e-2]
+}
+fix {
+  detz_shift=True
+}
+geometry {
+  optimized_detector_name= /n/home00/dermen/e080_laue/opt_rayonix_fas2.expt
+  refls_key = filtered_refls
+  optimized_results_tag = geoNewStrong2
+  optimize = True
+  betas {
+    panel_rot=[1,1,1]
+    panel_xyz=[1,1,1]
+  }
+  min {
+    panel_rotations=-10,-10,-10
+    panel_translations=-50,-50,-50
+  }
+  max {
+    panel_rotations=10,10,10
+    panel_translations=50,50,50
+  }
+}
+
