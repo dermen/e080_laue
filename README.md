@@ -147,6 +147,8 @@ Make the input file for diffBragg
 libtbx.python make_input_f.py  optimized_newpath.expt  strongs.refl  spec_3eV.lam 
 ```
 
+Note, the above command creates a folder `split` in the folder where the command was run from, and that should not be moved!
+
 Download the PDB file needed to structure factor generation
 
 ```
@@ -170,18 +172,6 @@ where `set_db.sh` contains the environment settings (note the path to `setpaths.
 module load cuda/11.1.0-fasrc01 gcc/8.3.0-fasrc01 openmpi
 export SETUPTOOLS_USE_DISTUTILS=1
 source ~/xtal/build/setpaths.sh 
-```
-
-Work on the branch until its merged into master
-
-```bash
-# this shouldnt be necessary for long as the pull request is under review as of Feb 23, 2022, but for now, this processing is only supported under the diffBragg_laue branch of cctbx_project:
-cd $CCTBXLAND/modules/cctbx_project
-git fetch
-git checkout diffBragg_laue
-git pull
-cd $CCTBXLAND/build
-make
 ```
 
 Edit the script `hopper.phil` to contain the proper paths to any files and execute the command. Before doing multi process run, try a single image
