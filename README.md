@@ -183,8 +183,8 @@ DIFFBRAGG_USE_CUDA=1 srun --mpi=pmi2 simtbx.diffBragg.hopper hopper.phil  exp_re
 
 # examine the results
 libtbx.python pred_offsets.py "$OUTPUT_D/refls/rank*/*.refl"
-median over 16 shots=0.569268 pixels (8624 refls)
-Min refls per shot=344, max refls per shot = 691, ave refls per shot=539.0
+#median over 16 shots=0.569268 pixels (8624 refls)
+#Min refls per shot=344, max refls per shot = 691, ave refls per shot=539.0
 
 # produces the plot below
 ```
