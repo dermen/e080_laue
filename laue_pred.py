@@ -1,8 +1,31 @@
 
+import argparse as ap 
+parser = ap.ArgumentParser() 
+parser.add_argument("predPhil", type=str, help="path to a phil config file for diffbragg prediction")
+parser.add_argument("procPhil", type=str, help="path to a phil config file for stills process (used for spot finding and integration)")
+parser.add_argument("inputGlob", type=str, help="glob of input pandas tables (those that are output by simtbx.diffBragg.hopper or diffBragg.hopper_process")
+parser.add_argument("outdir", type=str, help="path to output refls")
+
+parser.add_argument("--cmdlinePhil", nargs="+", default=None, type=str, help="command line phil params")
+parser.add_argument("--numdev", type=int, default=1, help="number of GPUs (default=1)")
+parser.add_argument("--weakFrac", type=float, default=0, help="Fraction of weak reflections to keep (default=0; allowed range: 0-1 )")
+parser.add_argument("--pklTag", type=str, help="optional suffix for globbing for pandas pickles (default .pkl)", default=".pkl")
+parser.add_argument("--loud", action="store_true", help="show lots of screen output")
+parser.add_argument("--hopInputName", default="preds_for_hopper", type=str, help="write exp_ref_spec file and best_pickle pointing to the preditction models, such that one can run predicted rois through simtbx.diffBragg.hopper (e.g. to fit per-roi scale factors)")
+
+args = parser.parse_args()
+
 from mpi4py import MPI
+COMM = MPI.COMM_WORLD
+
+def printR(*args, **kwargs):
+    print("RANK %d" % COMM.rank, *args, **kwargs)
+def print0(*args, **kwargs):
+    if COMM.rank==0:
+        print(*args, **kwargs)
+
 import numpy as np
 from dials.array_family import flex
-COMM = MPI.COMM_WORLD
 from simtbx.diffBragg import utils
 from simtbx.modeling import predictions
 import glob
@@ -13,7 +36,13 @@ from scipy.interpolate import interp1d
 from dxtbx.model import ExperimentList
 from dials.algorithms.integration.stills_significance_filter import SignificanceFilter
 from dials.algorithms.indexing.stills_indexer import calc_2D_rmsd_and_displacements
+import logging
+import sys
 
+if not args.loud:
+    logging.disable(logging.CRITICAL)
+else:
+    logging.basicConfig(level=logging.DEBUG)
 
 
 # Note: these imports and following 3 methods will eventually be in CCTBX/simtbx/diffBragg/utils
@@ -26,10 +55,17 @@ from dials.command_line.stills_process import phil_scope
 
 
 
+
+
 from dials.algorithms.integration.integrator import create_integrator
 from dials.algorithms.profile_model.factory import ProfileModelFactory
 from dxtbx.model import ExperimentList
 from dials.array_family import flex
+
+for i,arg in enumerate(sys.argv):
+    if os.path.isfile(arg) or os.path.isdir(arg):
+        sys.argv[i] = os.path.abspath(arg)
+print0("COMMANDLINE: libtbx.python %s" % " ".join(sys.argv))
 
 def stills_process_params_from_file(phil_file):
     """
@@ -172,7 +208,7 @@ def integrate(phil_file, experiments, indexed, predicted):
                 crystal_model.get_half_mosaicity_deg(),
             )
 
-    print(log_str)
+    #print0(log_str)
     return experiments, integrated
 
 
@@ -218,6 +254,7 @@ def refls_from_sims(panel_imgs, detector, beam, thresh=0, filter=None, panel_ids
         img = panel_imgs[i]
         if phil_file is not None:
             params = stills_process_params_from_file(phil_file)
+            badpix = None
             if params.spotfinder.lookup.mask is not None:
                 if badpix_all is None:
                     badpix_all = utils.load_mask(params.spotfinder.lookup.mask)
@@ -256,19 +293,8 @@ def refls_from_sims(panel_imgs, detector, beam, thresh=0, filter=None, panel_ids
 
 
 
-if __name__=="__main__":
-    import argparse as ap 
-    parser = ap.ArgumentParser() 
-    parser.add_argument("predPhil", type=str, help="path to a phil config file for diffbragg prediction")
-    parser.add_argument("procPhil", type=str, help="path to a phil config file for stills process (used for spot finding and integration)")
-    parser.add_argument("inputGlob", type=str, help="glob of input pandas tables (those that are output by simtbx.diffBragg.hopper or diffBragg.hopper_process")
-    parser.add_argument("outdir", type=str, help="path to output refls")
-    
-    parser.add_argument("--cmdlinePhil", nargs="+", default=None, type=str, help="command line phil params")
-    parser.add_argument("--numdev", type=int, default=1, help="number of GPUs (default=1)")
-    parser.add_argument("--weakFrac", type=float, default=0, help="Fraction of weak reflections to keep (default=0; allowed range: 0-1 )")
 
-    args = parser.parse_args()
+if __name__=="__main__":
 
     if COMM.rank==0:
         if not os.path.exists( args.outdir):
@@ -276,36 +302,40 @@ if __name__=="__main__":
     COMM.barrier()
 
     params = utils.get_extracted_params_from_phil_sources(args.predPhil, args.cmdlinePhil)
-    fnames = glob.glob(args.inputGlob)
+    #fnames = glob.glob(args.inputGlob + "/*%s" % args.pklTag)
+    fnames = glob.glob(args.inputGlob) # + "/*%s" % args.pklTag)
+    #if not fnames:
+    #    fnames = glob.glob(args.inputGlob + "/rank*/*%s" % args.pklTag)
     if params.predictions.verbose:
         params.predictions.verbose = COMM.rank==0
 
     dev = COMM.rank % args.numdev
 
-    def print0(*args, **kwargs):
-        if COMM.rank==0:
-            print(*args, **kwargs)
 
     print0("Found %d input files" % len(fnames))
 
     all_wave = []
     npred_per_shot = []
+    all_dfs = []
+    exp_ref_spec_lines = []
     for i_f, f in enumerate(fnames):
         if i_f % COMM.size != COMM.rank:
             continue
-        print0("Shot %d / %d" % (i_f, len(fnames)))
+        printR("Shot %d / %d" % (i_f+1, len(fnames)), flush=True)
 
         df = pandas.read_pickle(f)
 
         expt_name = df.opt_exp_name.values[0]
-        new_expt_name = "%s/pred%d.expt" % (args.outdir, i_f)
+        tag = os.path.splitext(os.path.basename(expt_name))[0]
+        new_expt_name = "%s/%s_pred%d.expt" % (args.outdir,tag,  i_f)
         shutil.copyfile(expt_name,  new_expt_name)
+        new_expt_name = os.path.abspath(new_expt_name)
+        df["opt_exp_name"] = new_expt_name
+        
 
         pred = predictions.get_predicted_from_pandas(
             df, params, strong=None, device_Id=dev, spectrum_override=None)
 
-        #strong_name = df.exp_name.values[0].replace(".expt", ".refl")
-        #Rstrong = flex.reflection_table.from_file(strong_name)
         data_exptList = ExperimentList.from_file(expt_name)
         data_expt = data_exptList[0]
         data = utils.image_data_from_expt(data_expt) 
@@ -324,38 +354,37 @@ if __name__=="__main__":
 
         weak_sel = flex.bool([i in weak_refl_inds_keep for i in pred['refl_idx']])
         keeps = np.logical_or( pred['is_strong'], weak_sel)
-        print("Sum keeps=%d; num_strong=%d, num_kept_weak=%d" % (sum(keeps), sum(strong_sel), sum(weak_sel)))
+        printR("Sum keeps=%d; num_strong=%d, num_kept_weak=%d" % (sum(keeps), sum(strong_sel), sum(weak_sel)))
         pred = pred.select(flex.bool(keeps))
         nstrong = np.sum(strong_sel)
         all_wave  += list(pred["ave_wavelen"])
-        print("Will save %d refls" % len(pred))
+        printR("Will save %d refls" % len(pred))
         npred_per_shot.append(len(pred))
-        pred.as_file("%s/pred%d.refl" % ( args.outdir, i_f))
+        pred_file = os.path.abspath("%s/%s_pred%d.refl" % ( args.outdir, tag, i_f))
+        pred.as_file(pred_file)
 
         Rindexed = Rstrong.select(Rstrong['indexed'])
         utils.refls_to_hkl(Rindexed, data_expt.detector, data_expt.beam, data_expt.crystal, update_table=True)
         int_expt, int_refl = integrate(args.procPhil, data_exptList, Rindexed, pred)
-        int_expt.as_file("%s/integ%d.expt" % ( args.outdir, i_f))
-        int_refl.as_file("%s/integ%d.refl" % ( args.outdir, i_f))
+        int_expt.as_file("%s/%s_integ%d.expt" % ( args.outdir,tag, i_f))
+        int_refl.as_file("%s/%s_integ%d.refl" % ( args.outdir,tag, i_f))
+        all_dfs.append(df)
+        exp_ref_spec_lines.append("%s %s %s\n" % (new_expt_name, pred_file, df.spectrum_filename.values[0]))
 
-
+    all_dfs = COMM.reduce(all_dfs)
+    exp_ref_spec_lines = COMM.reduce(exp_ref_spec_lines)
+    print0("\nReflections written to folder %s.\n" % args.outdir)
+    if COMM.rank==0:
+        hopper_input_name = os.path.abspath(os.path.join(args.outdir , "%s.txt" % args.hopInputName))
+        o = open(hopper_input_name, "w")
+        for l in exp_ref_spec_lines:
+            o.write(l)
+        o.close()
+        all_dfs = pandas.concat(all_dfs)
+        all_dfs.reset_index(inplace=True, drop=True)
+        best_pkl_name = os.path.abspath(os.path.join(args.outdir , "%s.pkl" % args.hopInputName))
+        all_dfs.to_pickle(best_pkl_name)
+        print("Wrote %s (best_pickle option for simtbx.diffBragg.hopper) and %s (exp_ref_spec option for simtbx.diffBragg.hopper). Use them to run the predictions through hopper. Use the centroid=cal option to specify the predictions" % (best_pkl_name, hopper_input_name))
     npred_per_shot = COMM.reduce(npred_per_shot)
     all_wave = COMM.reduce(all_wave)
 
-    #if COMM.rank==0:
-    #    #plot script to compare all integrated wavelengths to the input spectrum
-    #    from pylab import *
-    #    style.use("ggplot")
-    #    #a2,b2 = utils.load_spectra_file("spectra/model_0_4eV.lam")
-    #    a2,b2 = utils.load_spectra_file("spectra/model_0_4eV_shiftBack.lam")
-
-    #    out = hist( utils.ENERGY_CONV/array(all_wave), bins=100)
-    #    plot( b2, a2*out[0].max(), label="reference spectrum")
-    #    xlabel("energy (eV)")
-    #    ylabel("# of spots")
-    #    legend()
-    #    s="Min pred=%d; Max pred = %d; Ave pred=%d" % (min(npred_per_shot), max(npred_per_shot), mean(npred_per_shot))
-    #    title("Total number of predictions=%d; threshold=%1.1e\n%s" % (len(all_wave),  params.predictions.threshold, s))
-    #    savefig("preds_%1.1e.png" % params.predictions.threshold)
-
-    print("Reflections written to folder %s" % args.outdir)
