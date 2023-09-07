@@ -10,37 +10,13 @@ from simtbx.diffBragg import utils as db_utils
 from iotbx.reflection_file_reader import any_reflection_file
 from simtbx.nanoBragg import nanoBragg
 import socket
+from simtbx.modeling.forward_models import diffBragg_forward
 from simtbx.nanoBragg.sim_data import SimData
 from simtbx.nanoBragg.nanoBragg_crystal import NBcrystal
 from simtbx.nanoBragg.nanoBragg_beam import NBbeam
+from scitbx.matrix import col, sqr
 import os
 import time
-
-
-def diffBragg_forward(CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
-                      oversample=0, Ncells_abc=(50, 50, 50),
-                      mos_dom=1, mos_spread=0, beamsize_mm=0.001, device_Id=0,
-                      show_params=True, crystal_size_mm=0.01, printout_pix=None,
-                      verbose=0, default_F=0, interpolate=0, profile="gauss",
-                      spot_scale_override=None,
-                      mosaicity_random_seeds=None,
-                      nopolar=False, diffuse_params=None, cuda=False):
-
-    if cuda:
-        os.environ["DIFFBRAGG_USE_CUDA"] = "1"
-    CRYSTAL, Famp = utils.ensure_p1(CRYSTAL, Famp)
-
-    nbBeam = NBbeam()
-    nbBeam.size_mm = beamsize_mm
-    nbBeam.unit_s0 = BEAM.get_unit_s0()
-    wavelengths = utils.ENERGY_CONV / np.array(energies)
-    nbBeam.spectrum = list(zip(wavelengths, fluxes))
-
-    nbCrystal = NBcrystal(init_defaults=False)
-    nbCrystal.isotropic_ncells = False
-    nbCrystal.dxtbx_crystal = CRYSTAL
-    nbCrystal.miller_array = Famp
-    nbCrystal.Ncells_abc = Ncells_abc
 import sys
 
 OUTDIR = sys.argv[1]
@@ -49,102 +25,10 @@ if COMM.rank==0:
         os.makedirs(OUTDIR)
 COMM.barrier()
 
-
-def diffBragg_forward(CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
-                      oversample=0, Ncells_abc=(50, 50, 50),
-                      mos_dom=1, mos_spread=0, beamsize_mm=0.001, device_Id=0,
-                      show_params=True, crystal_size_mm=0.01, printout_pix=None,
-                      verbose=0, default_F=0, interpolate=0, profile="gauss",
-                      spot_scale_override=None,
-                      mosaicity_random_seeds=None,
-                      nopolar=False, diffuse_params=None, cuda=False):
-
-    if cuda:
-        os.environ["DIFFBRAGG_USE_CUDA"] = "1"
-    CRYSTAL, Famp = utils.ensure_p1(CRYSTAL, Famp)
-
-    nbBeam = NBbeam()
-    nbBeam.size_mm = beamsize_mm
-    nbBeam.unit_s0 = BEAM.get_unit_s0()
-    wavelengths = utils.ENERGY_CONV / np.array(energies)
-    nbBeam.spectrum = list(zip(wavelengths, fluxes))
-
-    nbCrystal = NBcrystal(init_defaults=False)
-    nbCrystal.isotropic_ncells = False
-    nbCrystal.dxtbx_crystal = CRYSTAL
-    nbCrystal.miller_array = Famp
-    nbCrystal.Ncells_abc = Ncells_abc
-    nbCrystal.symbol = CRYSTAL.get_space_group().info().type().lookup_symbol()
-    nbCrystal.thick_mm = crystal_size_mm
-    nbCrystal.xtal_shape = profile
-    nbCrystal.n_mos_domains = mos_dom
-    nbCrystal.mos_spread_deg = mos_spread
-
-    S = SimData()
-    S.detector = DETECTOR
-    npan = len(DETECTOR)
-    nfast, nslow = DETECTOR[0].get_image_size()
-    img_shape = npan, nslow, nfast
-    S.beam = nbBeam
-    S.crystal = nbCrystal
-    if mosaicity_random_seeds is not None:
-        S.mosaic_seeds = mosaicity_random_seeds
-
-    S.instantiate_diffBragg(verbose=verbose, oversample=oversample, interpolate=interpolate, device_Id=device_Id,
-                            default_F=default_F)
-
-    if spot_scale_override is not None:
-        S.update_nanoBragg_instance("spot_scale", spot_scale_override)
-    S.update_nanoBragg_instance("nopolar", nopolar)
-
-    if show_params:
-        S.D.show_params()
-
-    S.D.verbose = 2
-    S.D.store_ave_wavelength_image = True
-    S.D.record_time = True
-    if diffuse_params is not None:
-        S.D.use_diffuse = True
-        S.D.gamma_miller_units = diffuse_params["gamma_miller_units"]
-        S.D.diffuse_gamma = diffuse_params["gamma"]
-        S.D.diffuse_sigma = diffuse_params["sigma"]
-    S.D.add_diffBragg_spots_full()
-    S.D.show_timings()
-    t = time.time()
-    data = S.D.raw_pixels_roi.as_numpy_array().reshape(img_shape)
-    wavelen_data = S.D.ave_wavelength_image().as_numpy_array().reshape(img_shape)
-    t = time.time() - t
-    print("Took %f sec to recast and reshape" % t)
-    if printout_pix is not None:
-        S.D.raw_pixels_roi*=0
-        p,f,s = printout_pix
-        S.D.printout_pixel_fastslow = f,s
-        S.D.show_params()
-        S.D.add_diffBragg_spots(printout_pix)
-
-    # free up memory
-    S.D.free_all()
-    S.D.free_Fhkl2()
-    if S.D.gpu_free is not None:
-        S.D.gpu_free()
-    return data, wavelen_data
-
-
-num_shots = 1000000
-
-# gather all hostnames and create sub-communicators for all processes on a given host
-HOST = socket.gethostname()
-unique_hosts = COMM.gather(HOST)
-HOST_MAP = None
-if COMM.rank == 0:
-    HOST_MAP = {HOST: i for i, HOST in enumerate(set(unique_hosts))}
-HOST_MAP = COMM.bcast(HOST_MAP)
-HOST_COMM = COMM.Split(color=HOST_MAP[HOST])
-NUM_HOSTS = len(HOST_MAP)
+num_shots = 180
 
 El = ExperimentList.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.expt", False)
-R = flex.reflection_table.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.refl")
-
+#R = flex.reflection_table.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.refl")
 
 DETECTOR = El.detectors()[0]
 DETECTOR = db_utils.strip_thickness_from_detector(DETECTOR)
@@ -154,87 +38,121 @@ stride = 1
 weights = weights[::stride]
 energies = energies[::stride]
 ave_en = np.mean(energies)
+shift = 11808 - ave_en
+energies += shift
+
+ave_en = np.mean(energies)
 ave_wave = utils.ENERGY_CONV / ave_en
+ave_en = np.mean(energies)
+ave_wave = utils.ENERGY_CONV / ave_en
+
 BEAM = El.beams()[0]
 BEAM.set_wavelength(ave_wave)
 
+#Famp = any_reflection_file("/global/cfs/cdirs/m3992/dermen/7lvc.pdb.mtz").as_miller_arrays()[0].as_amplitude_array()
 
-Famp = any_reflection_file("/global/cfs/cdirs/m3992/dermen/7lvc.pdb.mtz").as_miller_arrays()[0].as_amplitude_array()
-total_flux=1e12
-#water_bkgrnd = utils.sim_background(
-#    DETECTOR, BEAM, [waves[0]], [1], total_flux, pidx=0, beam_size_mm=0.01,
-#    Fbg_vs_stol=None, sample_thick_mm=50, density_gcm3=1, molecular_weight=18)
+pdb_file = "/global/cfs/cdirs/m3992/dermen/e080_laue/7lvc.pdb"
+Fcalc = db_utils.get_complex_fcalc_from_pdb(pdb_file, wavelength=ave_wave) #, k_sol=-0.8, b_sol=120) #, k_sol=0.8, b_sol=100)
+Famp = Fcalc.as_amplitude_array()
+
+total_flux=5e9
+beam_size_mm=0.01
+water_bkgrnd = utils.sim_background(
+    DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, beam_size_mm=beam_size_mm,
+    Fbg_vs_stol=None, sample_thick_mm=2.5, density_gcm3=1, molecular_weight=18)
+
+air_name = '/pscratch/sd/d/dermen/diffraction_ai_sims_data/air.stol'
+air_Fbg, air_stol = np.loadtxt(air_name).T
+air_stol = flex.vec2_double(list(zip(air_Fbg, air_stol)))
+air = utils.sim_background(DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, beam_size_mm=beam_size_mm,
+                        molecular_weight=14,
+                           sample_thick_mm=5,
+                           Fbg_vs_stol=air_stol, density_gcm3=1.2e-3) 
+
 #np.save("water", water_bkgrnd.as_numpy_array())
-img_sh = 3840, 3840
+fdim, sdim = DETECTOR[0].get_image_size()
+img_sh = sdim, fdim
+water_bkgrnd = water_bkgrnd.as_numpy_array().reshape(img_sh)
+air = air.as_numpy_array().reshape(img_sh)
 
 num_en = len(energies)
 fluxes = weights / weights.sum() * total_flux
-
-rank_inds = np.array_split(np.arange(num_en), HOST_COMM.size)[HOST_COMM.rank]
-energies_rank = energies[rank_inds]
-fluxes_rank = fluxes[rank_inds]
+print("Simulating with %d energies" % num_en)
+print("Mean energy:", ave_wave)
 
 CRYSTAL = El.crystals()[0]
 
-water_bkgrnd = None
-if HOST_COMM.rank==0:
-    #water_bkgrnd = flex.double(np.load("water.npy").reshape(img_sh))
-    water_bkgrnd = np.load("/global/cfs/cdirs/m3992/dermen/water.npy").reshape(img_sh)
-    #bg = [water_bkgrnd]
+#    #water_bkgrnd = flex.double(np.load("water.npy").reshape(img_sh))
+#    water_bkgrnd = np.load("/global/cfs/cdirs/m3992/dermen/water.npy").reshape(img_sh)
+#    #bg = [water_bkgrnd]
+
+from scipy.spatial.transform import Rotation
+
+randU = None
+if COMM.rank==0:
+    randU = Rotation.random(random_state=0)
+    randU = randU.as_matrix()
+randU = COMM.bcast(randU)
+CRYSTAL.set_U(randU.ravel())
+
+delta_phi =  np.pi / 180 # 1 degree
+
+gonio_axis = col((1,0,0))
+U0 = sqr(CRYSTAL.get_U())  # starting Umat
+
+mos_spread = float(sys.argv[2])
+num_mos = 150
+device_Id = COMM.rank % 4
 
 for i_shot in range(num_shots):
-    if i_shot % NUM_HOSTS != HOST_MAP[HOST]:
+    if i_shot % COMM.size != COMM.rank:
         continue
-    if HOST_COMM.rank==0:
-        from scipy.spatial.transform import Rotation
-        randU = Rotation.random()
-        randU = randU.as_matrix()
-        CRYSTAL.set_U(randU.ravel())
-    CRYSTAL = HOST_COMM.bcast(CRYSTAL)
-    #print("rank%d will simulate %d energies" %(COMM.rank, len(energies_rank)))
 
-    img, wave_img = diffBragg_forward(CRYSTAL, DETECTOR, BEAM, Famp, energies_rank, fluxes_rank,
-                      oversample=1, Ncells_abc=(120,120,30),
-                      mos_dom=1, mos_spread=0, beamsize_mm=0.01, device_Id=0,
-                      show_params=False, crystal_size_mm=0.01, printout_pix=None,
-                      verbose=0, default_F=0, interpolate=0, profile="gauss",
-                      spot_scale_override=6e9,
-                      mosaicity_random_seeds=None,
-                      nopolar=False, diffuse_params=None, cuda=False)
+    
+    print("Doing shot %d" % i_shot)
+    Rphi = gonio_axis.axis_and_angle_as_r3_rotation_matrix(delta_phi*i_shot, deg=False)
+    Uphi = Rphi * U0
+    CRYSTAL.set_U(Uphi)
+
+    t = time.time()
+    img, wave_img = diffBragg_forward(CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
+                      oversample=1, Ncells_abc=(100,100,100),
+                      mos_dom=num_mos, mos_spread=mos_spread, beamsize_mm=beam_size_mm, 
+                      device_Id=device_Id,
+                      show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
+                      verbose=0, default_F=0, interpolate=0, profile="square",
+                      mosaicity_random_seeds=None, div_mrad=0.02,
+                      nopolar=False, diffuse_params=None, cuda=True, perpixel_wavelen=True)
+    t = time.time()-t
+    print("Took %.4f sec to sim" % t)
     if len(img.shape)==3:
         img = img[0]
         wave_img = wave_img[0]
 
-    #model = utils.flexBeam_sim_colors(
-    #    CRYSTAL, DETECTOR, BEAM, Famp, energies_rank, fluxes_rank,
-    #    pids=None, cuda=False, oversample=2, Ncells_abc=(120, 120, 30),
-    #    mos_dom=1, mos_spread=0, beamsize_mm=0.01, device_Id=0, omp=False,
-    #    show_params=False, crystal_size_mm=0.1, printout_pix=None, time_panels=False,
-    #    verbose=0, default_F=0, interpolate=0, recenter=True, profile="gauss",
-    #    spot_scale_override=5e7, background_raw_pixels=bg, include_noise=False,
-    #    add_water=False, add_air=False, water_path_mm=0.1, air_path_mm=50, rois_perpanel=None,
-    #    adc_offset=0, readout_noise=3, psf_fwhm=20, gain=1, mosaicity_random_seeds=None, nopolar=False)
-    #img = model[0][1]
-    img = HOST_COMM.reduce(img)
-
-    if HOST_COMM.rank==0:
-        img_with_bg = img +water_bkgrnd
-        SIM = nanoBragg(detector=DETECTOR, beam=BEAM)
-        SIM.beamsize_mm = 0.01
-        SIM.exposure_s = 1
-        SIM.flux = total_flux
-        SIM.adc_offset_adu =0
-        SIM.detector_psf_kernel_radius_pixels = 5
-        SIM.detector_psf_fwhm_mm = .1
-        SIM.quantum_gain = 0.7
-        SIM.readout_noise_adu = 3
-        SIM.raw_pixels = flex.double((img_with_bg).ravel())
-        SIM.add_noise()
-        img = SIM.raw_pixels.as_numpy_array().reshape(img_sh)
-        SIM.free_all()
-        del SIM
-        houtfile = os.path.join(OUTDIR, "shot%d.h5" % i_shot)
-        h = h5py.File(houtfile, "w")
-        h.create_dataset("data", data=img, dtype=np.float32, compression="lzf")
-        h.create_dataset("wave_data", data=wave_img, dtype=np.float32, compression="lzf")
-        h.close()
+    img_with_bg = img +water_bkgrnd + air
+        
+    SIM = nanoBragg(detector=DETECTOR, beam=BEAM)
+    SIM.beamsize_mm = beam_size_mm 
+    SIM.exposure_s = 1
+    SIM.flux = total_flux
+    SIM.adc_offset_adu = 10
+    SIM.detector_psf_kernel_radius_pixels = 5
+    SIM.detector_calibration_noice_pct = 3
+    SIM.detector_psf_fwhm_mm = .1
+    SIM.quantum_gain = 0.7
+    SIM.readout_noise_adu = 3
+    SIM.raw_pixels += flex.double((img_with_bg).ravel())
+    SIM.add_noise()
+    cbf_name = os.path.join(OUTDIR, "shot_1_%05d.cbf" % (i_shot+1))
+    SIM.to_cbf(cbf_name, cbf_int=True)
+    img = SIM.raw_pixels.as_numpy_array().reshape(img_sh)
+    SIM.free_all()
+    del SIM
+    h5_name = cbf_name.replace(".cbf", ".h5")
+    h = h5py.File(h5_name, "w")
+    h.create_dataset("wave_data", data=wave_img, dtype=np.float32, compression="lzf")
+    h.create_dataset("delta_phi", data=delta_phi)
+    h.create_dataset("Umat", data=CRYSTAL.get_U())
+    h.create_dataset("Bmat", data=CRYSTAL.get_B())
+    h.create_dataset("mos_spread", data=mos_spread)
+    h.close()
