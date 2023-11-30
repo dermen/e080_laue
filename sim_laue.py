@@ -1,4 +1,3 @@
-# coding: utf-8
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -20,13 +19,8 @@ from simtbx.nanoBragg import utils
 from mpi4py import MPI
 COMM = MPI.COMM_WORLD
 from simtbx.diffBragg import utils as db_utils
-from iotbx.reflection_file_reader import any_reflection_file
 from simtbx.nanoBragg import nanoBragg
-import socket
 from simtbx.modeling.forward_models import diffBragg_forward
-from simtbx.nanoBragg.sim_data import SimData
-from simtbx.nanoBragg.nanoBragg_crystal import NBcrystal
-from simtbx.nanoBragg.nanoBragg_beam import NBbeam
 from scitbx.matrix import col, sqr
 import os
 import time
@@ -42,15 +36,14 @@ COMM.barrier()
 
 num_shots = 180
 
-El = ExperimentList.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.expt", False)
-#R = flex.reflection_table.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.refl")
+El = ExperimentList.from_file("ultra_refined000.expt", False)
 
 DETECTOR = El.detectors()[0]
 DETECTOR = db_utils.strip_thickness_from_detector(DETECTOR)
 
 spec_file = args.specFile
 if spec_file is None:
-    spec_file = '/global/cfs/cdirs/m3992/dermen/e080_2.lam'
+    spec_file = 'e080_2.lam'
 
 try:
     weights, energies = db_utils.load_spectra_file(spec_file)
@@ -71,9 +64,7 @@ ave_wave = utils.ENERGY_CONV / ave_en
 BEAM = El.beams()[0]
 BEAM.set_wavelength(ave_wave)
 
-#Famp = any_reflection_file("/global/cfs/cdirs/m3992/dermen/7lvc.pdb.mtz").as_miller_arrays()[0].as_amplitude_array()
-
-pdb_file = "/global/cfs/cdirs/m3992/dermen/e080_laue/7lvc.pdb"
+pdb_file = "7lvc.pdb"
 Fcalc = db_utils.get_complex_fcalc_from_pdb(pdb_file, wavelength=ave_wave) #, k_sol=-0.8, b_sol=120) #, k_sol=0.8, b_sol=100)
 Famp = Fcalc.as_amplitude_array()
 
@@ -83,7 +74,7 @@ water_bkgrnd = utils.sim_background(
     DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, beam_size_mm=beam_size_mm,
     Fbg_vs_stol=None, sample_thick_mm=2.5, density_gcm3=1, molecular_weight=18)
 
-air_name = '/pscratch/sd/d/dermen/diffraction_ai_sims_data/air.stol'
+air_name = 'air.stol'
 air_Fbg, air_stol = np.loadtxt(air_name).T
 air_stol = flex.vec2_double(list(zip(air_Fbg, air_stol)))
 air = utils.sim_background(DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, beam_size_mm=beam_size_mm,
@@ -91,7 +82,6 @@ air = utils.sim_background(DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, 
                            sample_thick_mm=5,
                            Fbg_vs_stol=air_stol, density_gcm3=1.2e-3) 
 
-#np.save("water", water_bkgrnd.as_numpy_array())
 fdim, sdim = DETECTOR[0].get_image_size()
 img_sh = sdim, fdim
 water_bkgrnd = water_bkgrnd.as_numpy_array().reshape(img_sh)
@@ -103,10 +93,6 @@ print("Simulating with %d energies" % num_en)
 print("Mean energy:", ave_wave)
 
 CRYSTAL = El.crystals()[0]
-
-#    #water_bkgrnd = flex.double(np.load("water.npy").reshape(img_sh))
-#    water_bkgrnd = np.load("/global/cfs/cdirs/m3992/dermen/water.npy").reshape(img_sh)
-#    #bg = [water_bkgrnd]
 
 from scipy.spatial.transform import Rotation
 
