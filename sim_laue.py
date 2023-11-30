@@ -1,4 +1,17 @@
 # coding: utf-8
+from argparse import ArgumentParser
+
+parser = ArgumentParser()
+parser.add_argument("outdir", type=str)
+parser.add_argument("--specFile", type=str, default=None)
+parser.add_argument("--mosSpread", type=float, default=0.025)
+parser.add_argument("--mosDoms", type=int, default=150)
+parser.add_argument("--div", type=float, default=0)
+parser.add_argument("--divSteps", type=float, default=0)
+parser.add_argument("--testShot", action="store_true")
+parser.add_argument("--stride", type=int, default=1)
+args = parser.parse_args()
+
 from dials.array_family import flex
 import h5py
 import numpy as np
@@ -19,10 +32,12 @@ import os
 import time
 import sys
 
-OUTDIR = sys.argv[1]
 if COMM.rank==0:
-    if not os.path.exists(OUTDIR):
-        os.makedirs(OUTDIR)
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
+    with open(args.outdir+"/commandline.txt", "w") as o:
+        cmd = " ".join(sys.argv)
+        o.write(cmd+"\n")
 COMM.barrier()
 
 num_shots = 180
@@ -33,13 +48,20 @@ El = ExperimentList.from_file("/global/cfs/cdirs/m3992/dermen/ultra_refined000.e
 DETECTOR = El.detectors()[0]
 DETECTOR = db_utils.strip_thickness_from_detector(DETECTOR)
 
-weights, energies = db_utils.load_spectra_file('/global/cfs/cdirs/m3992/dermen/e080_2.lam')
-stride = 1
-weights = weights[::stride]
-energies = energies[::stride]
+spec_file = args.specFile
+if spec_file is None:
+    spec_file = '/global/cfs/cdirs/m3992/dermen/e080_2.lam'
+
+try:
+    weights, energies = db_utils.load_spectra_file(spec_file)
+except:
+    weights, energies = db_utils.load_spectra_file(spec_file, delim=" ")
+
+weights = weights[::args.stride]
+energies = energies[::args.stride]
 ave_en = np.mean(energies)
-shift = 11808 - ave_en
-energies += shift
+#shift = 11808 - ave_en
+#energies += shift
 
 ave_en = np.mean(energies)
 ave_wave = utils.ENERGY_CONV / ave_en
@@ -100,8 +122,8 @@ delta_phi =  np.pi / 180 # 1 degree
 gonio_axis = col((1,0,0))
 U0 = sqr(CRYSTAL.get_U())  # starting Umat
 
-mos_spread = float(sys.argv[2])
-num_mos = 150
+mos_spread = args.mosSpread
+num_mos = args.mosDoms
 device_Id = COMM.rank % 4
 
 for i_shot in range(num_shots):
@@ -121,7 +143,8 @@ for i_shot in range(num_shots):
                       device_Id=device_Id,
                       show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
                       verbose=0, default_F=0, interpolate=0, profile="square",
-                      mosaicity_random_seeds=None, div_mrad=0.02,
+                      mosaicity_random_seeds=None, div_mrad=args.div, 
+                      divsteps=args.divSteps,
                       nopolar=False, diffuse_params=None, cuda=True, perpixel_wavelen=True)
     t = time.time()-t
     print("Took %.4f sec to sim" % t)
@@ -143,7 +166,7 @@ for i_shot in range(num_shots):
     SIM.readout_noise_adu = 3
     SIM.raw_pixels += flex.double((img_with_bg).ravel())
     SIM.add_noise()
-    cbf_name = os.path.join(OUTDIR, "shot_1_%05d.cbf" % (i_shot+1))
+    cbf_name = os.path.join(args.outdir, "shot_1_%05d.cbf" % (i_shot+1))
     SIM.to_cbf(cbf_name, cbf_int=True)
     img = SIM.raw_pixels.as_numpy_array().reshape(img_sh)
     SIM.free_all()
@@ -156,3 +179,5 @@ for i_shot in range(num_shots):
     h.create_dataset("Bmat", data=CRYSTAL.get_B())
     h.create_dataset("mos_spread", data=mos_spread)
     h.close()
+    if args.testShot:
+        break
