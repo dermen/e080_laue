@@ -9,6 +9,7 @@ parser.add_argument("--div", type=float, default=0)
 parser.add_argument("--divSteps", type=float, default=0)
 parser.add_argument("--testShot", action="store_true")
 parser.add_argument("--stride", type=int, default=1)
+parser.add_argument("--run", type=int, default=1)
 args = parser.parse_args()
 
 from dials.array_family import flex
@@ -29,9 +30,10 @@ import sys
 if COMM.rank==0:
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    with open(args.outdir+"/commandline.txt", "w") as o:
+    with open(args.outdir+"/commandline.txt", "r+") as o:
+        s = o.read()
         cmd = " ".join(sys.argv)
-        o.write(cmd+"\n")
+        o.write(s+"\n "+cmd+"\n")
 COMM.barrier()
 
 num_shots = 180
@@ -79,8 +81,8 @@ air_Fbg, air_stol = np.loadtxt(air_name).T
 air_stol = flex.vec2_double(list(zip(air_Fbg, air_stol)))
 air = utils.sim_background(DETECTOR, BEAM, [ave_wave], [1], total_flux, pidx=0, beam_size_mm=beam_size_mm,
                         molecular_weight=14,
-                           sample_thick_mm=5,
-                           Fbg_vs_stol=air_stol, density_gcm3=1.2e-3) 
+                        sample_thick_mm=5,
+                        Fbg_vs_stol=air_stol, density_gcm3=1.2e-3)
 
 fdim, sdim = DETECTOR[0].get_image_size()
 img_sh = sdim, fdim
@@ -110,28 +112,29 @@ U0 = sqr(CRYSTAL.get_U())  # starting Umat
 
 mos_spread = args.mosSpread
 num_mos = args.mosDoms
-device_Id = COMM.rank % 4
+device_Id = 0 #COMM.rank % 4
 
 for i_shot in range(num_shots):
     if i_shot % COMM.size != COMM.rank:
         continue
 
-    
     print("Doing shot %d" % i_shot)
     Rphi = gonio_axis.axis_and_angle_as_r3_rotation_matrix(delta_phi*i_shot, deg=False)
     Uphi = Rphi * U0
     CRYSTAL.set_U(Uphi)
 
     t = time.time()
-    img, wave_img = diffBragg_forward(CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
-                      oversample=1, Ncells_abc=(100,100,100),
-                      mos_dom=num_mos, mos_spread=mos_spread, beamsize_mm=beam_size_mm, 
-                      device_Id=device_Id,
-                      show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
-                      verbose=0, default_F=0, interpolate=0, profile="square",
-                      mosaicity_random_seeds=None, div_mrad=args.div, 
-                      divsteps=args.divSteps,
-                      nopolar=False, diffuse_params=None, cuda=True, perpixel_wavelen=True)
+    img, wave_img, h_img, k_img, l_img = diffBragg_forward(
+        CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
+        oversample=1, Ncells_abc=(100,100,100),
+        mos_dom=num_mos, mos_spread=mos_spread, beamsize_mm=beam_size_mm,
+        device_Id=device_Id,
+        show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
+        verbose=0, default_F=0, interpolate=0, profile="square",
+        mosaicity_random_seeds=None, div_mrad=args.div,
+        divsteps=args.divSteps,
+        nopolar=False, diffuse_params=None, cuda=True, perpixel_wavelen=True)
+
     t = time.time()-t
     print("Took %.4f sec to sim" % t)
     if len(img.shape)==3:
@@ -152,7 +155,7 @@ for i_shot in range(num_shots):
     SIM.readout_noise_adu = 3
     SIM.raw_pixels += flex.double((img_with_bg).ravel())
     SIM.add_noise()
-    cbf_name = os.path.join(args.outdir, "shot_1_%05d.cbf" % (i_shot+1))
+    cbf_name = os.path.join(args.outdir, "shot_%d_%05d.cbf" % (args.run, i_shot+1))
     SIM.to_cbf(cbf_name, cbf_int=True)
     img = SIM.raw_pixels.as_numpy_array().reshape(img_sh)
     SIM.free_all()
@@ -160,6 +163,9 @@ for i_shot in range(num_shots):
     h5_name = cbf_name.replace(".cbf", ".h5")
     h = h5py.File(h5_name, "w")
     h.create_dataset("wave_data", data=wave_img, dtype=np.float32, compression="lzf")
+    h.create_dataset("h_data", data=h_img, dtype=np.float32, compression="lzf")
+    h.create_dataset("k_data", data=k_img, dtype=np.float32, compression="lzf")
+    h.create_dataset("l_data", data=l_img, dtype=np.float32, compression="lzf")
     h.create_dataset("delta_phi", data=delta_phi)
     h.create_dataset("Umat", data=CRYSTAL.get_U())
     h.create_dataset("Bmat", data=CRYSTAL.get_B())
