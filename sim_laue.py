@@ -10,6 +10,10 @@ parser.add_argument("--divSteps", type=float, default=0)
 parser.add_argument("--testShot", action="store_true")
 parser.add_argument("--stride", type=int, default=1)
 parser.add_argument("--run", type=int, default=1)
+parser.add_argument("--mono", action='store_true')
+parser.add_argument("--oversample", type=int, default=1)
+parser.add_argument("--numimg", type=int, default=180)
+parser.add_argument("--noWaveImg", action="store_true")
 args = parser.parse_args()
 
 from dials.array_family import flex
@@ -30,13 +34,18 @@ import sys
 if COMM.rank==0:
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    with open(args.outdir+"/commandline.txt", "r+") as o:
-        s = o.read()
+    cmdfile = args.outdir+"/commandline.txt"
+    flag="w"
+    if os.path.exists(cmdfile):
+        flag = "r+"
+    with open(args.outdir+"/commandline.txt", flag) as o:
+        s=""
+        if flag=="r+":
+            s = o.read()
         cmd = " ".join(sys.argv)
         o.write(s+"\n "+cmd+"\n")
 COMM.barrier()
 
-num_shots = 180
 
 El = ExperimentList.from_file("ultra_refined000.expt", False)
 
@@ -89,6 +98,10 @@ img_sh = sdim, fdim
 water_bkgrnd = water_bkgrnd.as_numpy_array().reshape(img_sh)
 air = air.as_numpy_array().reshape(img_sh)
 
+if args.mono:
+    energies = np.array([ave_en])
+    weights = np.array([1])
+
 num_en = len(energies)
 fluxes = weights / weights.sum() * total_flux
 print("Simulating with %d energies" % num_en)
@@ -105,7 +118,7 @@ if COMM.rank==0:
 randU = COMM.bcast(randU)
 CRYSTAL.set_U(randU.ravel())
 
-delta_phi =  np.pi / 180 # 1 degree
+delta_phi =  np.pi / args.numimg
 
 gonio_axis = col((1,0,0))
 U0 = sqr(CRYSTAL.get_U())  # starting Umat
@@ -113,8 +126,10 @@ U0 = sqr(CRYSTAL.get_U())  # starting Umat
 mos_spread = args.mosSpread
 num_mos = args.mosDoms
 device_Id = 0 #COMM.rank % 4
-
-for i_shot in range(num_shots):
+from resonet.sims import make_sims
+STOL = make_sims.get_theta_map(DETECTOR, BEAM)
+reso, Bfac_img = make_sims.get_Bfac_img(STOL)
+for i_shot in range(args.numimg):
     if i_shot % COMM.size != COMM.rank:
         continue
 
@@ -124,22 +139,34 @@ for i_shot in range(num_shots):
     CRYSTAL.set_U(Uphi)
 
     t = time.time()
-    img, wave_img, h_img, k_img, l_img = diffBragg_forward(
+
+    out = diffBragg_forward(
         CRYSTAL, DETECTOR, BEAM, Famp, energies, fluxes,
-        oversample=1, Ncells_abc=(100,100,100),
+        oversample=args.oversample, Ncells_abc=(100,100,100),
         mos_dom=num_mos, mos_spread=mos_spread, beamsize_mm=beam_size_mm,
         device_Id=device_Id,
         show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
         verbose=0, default_F=0, interpolate=0, profile="square",
         mosaicity_random_seeds=None, div_mrad=args.div,
         divsteps=args.divSteps,
-        nopolar=False, diffuse_params=None, cuda=True, perpixel_wavelen=True)
+        nopolar=False, diffuse_params=None,
+        cuda=True, perpixel_wavelen=not args.noWaveImg)
+
+    if args.noWaveImg:
+        img = out
+        wave_img = h_img = k_img = l_img = None
+    else:
+        img, wave_img, h_img, k_img, l_img = out
 
     t = time.time()-t
     print("Took %.4f sec to sim" % t)
     if len(img.shape)==3:
         img = img[0]
-        wave_img = wave_img[0]
+        if wave_img is not None:
+            wave_img = wave_img[0]
+            h_img = h_img[0]
+            k_img = k_img[0]
+            l_img = l_img[0]
 
     img_with_bg = img +water_bkgrnd + air
         
@@ -162,10 +189,11 @@ for i_shot in range(num_shots):
     del SIM
     h5_name = cbf_name.replace(".cbf", ".h5")
     h = h5py.File(h5_name, "w")
-    h.create_dataset("wave_data", data=wave_img, dtype=np.float32, compression="lzf")
-    h.create_dataset("h_data", data=h_img, dtype=np.float32, compression="lzf")
-    h.create_dataset("k_data", data=k_img, dtype=np.float32, compression="lzf")
-    h.create_dataset("l_data", data=l_img, dtype=np.float32, compression="lzf")
+    if wave_img is not None:
+        h.create_dataset("wave_data", data=wave_img, dtype=np.float32, compression="lzf")
+        h.create_dataset("h_data", data=h_img, dtype=np.float32, compression="lzf")
+        h.create_dataset("k_data", data=k_img, dtype=np.float32, compression="lzf")
+        h.create_dataset("l_data", data=l_img, dtype=np.float32, compression="lzf")
     h.create_dataset("delta_phi", data=delta_phi)
     h.create_dataset("Umat", data=CRYSTAL.get_U())
     h.create_dataset("Bmat", data=CRYSTAL.get_B())
