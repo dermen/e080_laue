@@ -54,6 +54,7 @@ DETECTOR = db_utils.strip_thickness_from_detector(DETECTOR)
 
 spec_file = args.specFile
 if spec_file is None:
+    spec_file = 'from_vukica.lam'
     spec_file = 'e080_2.lam'
 
 try:
@@ -115,6 +116,8 @@ randU = None
 if COMM.rank==0:
     randU = Rotation.random(random_state=0)
     randU = randU.as_matrix()
+    randU = np.array([0.75829879, -0.32153556, 0.56709596, 0.62673815, 0.12018753,
+           -0.76990535, 0.17939408, 0.93923897, 0.29265666])
 randU = COMM.bcast(randU)
 CRYSTAL.set_U(randU.ravel())
 
