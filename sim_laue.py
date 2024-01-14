@@ -6,9 +6,11 @@ parser.add_argument("--specFile", type=str, default=None)
 parser.add_argument("--mosSpread", type=float, default=0.025)
 parser.add_argument("--mosDoms", type=int, default=150)
 parser.add_argument("--div", type=float, default=0)
-parser.add_argument("--divSteps", type=float, default=0)
+parser.add_argument("--divSteps", type=int, default=0)
+parser.add_argument("--enSteps", type=int, default=None)
 parser.add_argument("--testShot", action="store_true")
 parser.add_argument("--stride", type=int, default=1)
+parser.add_argument("--ndev", type=int, default=1)
 parser.add_argument("--run", type=int, default=1)
 parser.add_argument("--mono", action='store_true')
 parser.add_argument("--oversample", type=int, default=1)
@@ -34,16 +36,10 @@ import sys
 if COMM.rank==0:
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
-    cmdfile = args.outdir+"/commandline.txt"
-    flag="w"
-    if os.path.exists(cmdfile):
-        flag = "r+"
-    with open(args.outdir+"/commandline.txt", flag) as o:
-        s=""
-        if flag=="r+":
-            s = o.read()
+    cmdfile = args.outdir+"/commandline_run%d.txt" % args.run
+    with open(cmdfile, "w") as o:
         cmd = " ".join(sys.argv)
-        o.write(s+"\n "+cmd+"\n")
+        o.write(cmd+"\n")
 COMM.barrier()
 
 
@@ -61,6 +57,12 @@ try:
     weights, energies = db_utils.load_spectra_file(spec_file)
 except:
     weights, energies = db_utils.load_spectra_file(spec_file, delim=" ")
+
+if args.enSteps is not None:
+    from scipy.interpolate import interp1d
+    wts_I = interp1d(energies, weights)# bounds_error=False, fill_value=0)
+    energies = np.linspace(energies.min()+1e-6, energies.max()-1e-6, args.enSteps)
+    weights = wts_I(energies)
 
 weights = weights[::args.stride]
 energies = energies[::args.stride]
@@ -116,8 +118,6 @@ randU = None
 if COMM.rank==0:
     randU = Rotation.random(random_state=0)
     randU = randU.as_matrix()
-    randU = np.array([0.75829879, -0.32153556, 0.56709596, 0.62673815, 0.12018753,
-           -0.76990535, 0.17939408, 0.93923897, 0.29265666])
 randU = COMM.bcast(randU)
 CRYSTAL.set_U(randU.ravel())
 
@@ -128,7 +128,7 @@ U0 = sqr(CRYSTAL.get_U())  # starting Umat
 
 mos_spread = args.mosSpread
 num_mos = args.mosDoms
-device_Id = 0 #COMM.rank % 4
+device_Id = COMM.rank % args.ndev
 from resonet.sims import make_sims
 STOL = make_sims.get_theta_map(DETECTOR, BEAM)
 reso, Bfac_img = make_sims.get_Bfac_img(STOL)
@@ -148,7 +148,7 @@ for i_shot in range(args.numimg):
         oversample=args.oversample, Ncells_abc=(100,100,100),
         mos_dom=num_mos, mos_spread=mos_spread, beamsize_mm=beam_size_mm,
         device_Id=device_Id,
-        show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=None,
+        show_params=COMM.rank==0, crystal_size_mm=10, printout_pix=(0,2557,2573),
         verbose=0, default_F=0, interpolate=0, profile="square",
         mosaicity_random_seeds=None, div_mrad=args.div,
         divsteps=args.divSteps,
